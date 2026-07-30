@@ -1,0 +1,17 @@
+{
+  "brb": "BRB",
+  "live": "Live",
+  "gameTextSource": null,
+  "games": {
+    "hades": "Hades",
+    "hades 2": "Hades 2",
+    "hollow knight": "Hollow Knight",
+    "hk": "Hollow Knight",
+    "silksong": "Silksong",
+    "celeste": "Celeste",
+    "stardew": "Stardew",
+    "stardew valley": "Stardew",
+    "blasphemous": "Blasphemous",
+    "undertale": "Undertale"
+  }
+}

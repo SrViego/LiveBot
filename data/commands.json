@@ -1,0 +1,26 @@
+{
+  "discord": {
+    "aliases": ["dc", "disc"],
+    "response": "Entra no hall do Discord: https://discord.gg/SEU_CONVITE · agora: {jogo}"
+  },
+  "social": {
+    "aliases": ["redes", "links"],
+    "response": "Redes e links: (edita data/commands.json) · live: {jogo}"
+  },
+  "pix": {
+    "aliases": ["donate", "doar", "cafe", "apoio"],
+    "response": "Se quiser apoiar a live: (cola pix/link) — obrigado, {user}! 🕯️"
+  },
+  "horario": {
+    "aliases": ["quando", "agenda"],
+    "response": "Lives quando o mapa permitir — ativa a notificação! Agora: {jogo}"
+  },
+  "morgana": {
+    "aliases": ["botdc"],
+    "response": "No Discord a Morgana tem padaria e Pokémon. Aqui no Twitch é o LiveBot do hall."
+  },
+  "hallownest": {
+    "aliases": ["hk", "hollow"],
+    "response": "Hallownest espera. Não te esqueças do mapa. 🕯️ mortes: {mortes}"
+  }
+}
