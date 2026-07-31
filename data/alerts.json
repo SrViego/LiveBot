@@ -1,0 +1,50 @@
+{
+  "enabled": {
+    "follow": true,
+    "sub": true,
+    "resub": true,
+    "giftsub": true,
+    "cheer": true,
+    "raid": true,
+    "donation": true
+  },
+  "messages": {
+    "follow": [
+      "✦ Obrigado por seguir, {user}! Bem-vindo(a) ao hall. 🕯️",
+      "✦ {user} chegou em Dirtmouth — valeu pelo follow!",
+      "✦ Novo viajante: {user}. Obrigado por seguir o mapa!"
+    ],
+    "sub": [
+      "✦ {user} é sub! Obrigado por apoiar o hall. ⭐",
+      "✦ Sub de {user} — Hallownest agradece! ⭐"
+    ],
+    "resub": [
+      "✦ {user} renovou o sub ({months} meses)! Obrigado por ficar no hall. ⭐",
+      "✦ Resub de {user} · {months}x — o banco continua quente. Valeu!"
+    ],
+    "giftsub": [
+      "✦ {user} deu sub de presente{recipient}! Generosidade digna da Corte. 🎁",
+      "✦ Gift sub de {user}{recipient} — o hall fica mais vivo. Obrigado!"
+    ],
+    "cheer": [
+      "✦ {user} mandou {bits} bits! Obrigado pelo apoio. 💎",
+      "✦ Bits de {user}: {bits} · o prego brilha mais forte. Valeu!"
+    ],
+    "raid": [
+      "✦ RAID de {user} com {viewers} viajantes! Bem-vindos ao hall! 📣",
+      "✦ {user} trouxe {viewers} na raid — sentem-se no banco. Obrigado!"
+    ],
+    "donation": [
+      "✦ Obrigado pela doação, {user}{amount}! {note}🕯️",
+      "✦ Apoio de {user}{amount} — o hall agradece de verdade. {note}"
+    ],
+    "pix": [
+      "✦ PIX / apoio: {pix} · depois do envio, avisa no chat que a gente agradece! 🕯️",
+      "✦ Quer apoiar a live? PIX: {pix} · Obrigado por manter o fogo aceso!"
+    ]
+  },
+  "pixKey": "cole_sua_chave_pix_ou_link_aqui",
+  "pixLabel": "PIX",
+  "minBitsToThank": 1,
+  "donationKeywords": ["doei", "doe i", "enviei pix", "mandeipix", "mitei", "livepix", "live pix"]
+}

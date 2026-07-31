@@ -29,7 +29,12 @@ const ICONS = {
   add: '➕',
   rm: '➖',
   so: '📣',
-  lurk: '👁'
+  lurk: '👁',
+  pix: '💰',
+  follow: '➕',
+  gift: '🎁',
+  bits: '💎',
+  raid: '📣'
 };
 
 function clip(text, max = MAX) {
@@ -121,20 +126,40 @@ function obsNote(base, obsResult) {
 
 function helpPublic(customNames = []) {
   const core =
-    '!jogo !jogos !morte !win !stats !meta !hype !lurk !citacao !oi';
-  const extra = customNames.length
-    ? ` · ${customNames.map((n) => `!${n}`).join(' ')}`
+    '!jogo !jogos !morte !win !stats !meta !hype !lurk !citacao !oi !pix !apoios';
+  const filtered = customNames.filter(
+    (n) => !['pix', 'donate', 'doar', 'cafe', 'apoio'].includes(String(n).toLowerCase())
+  );
+  const extra = filtered.length
+    ? ` · ${filtered.map((n) => `!${n}`).join(' ')}`
     : '';
-  return say(`Comandos: ${core}${extra} · mods: !setjogo !proximo !brb !cena`, {
+  return say(`Comandos: ${core}${extra} · mods: !setjogo !proximo !brb !cena !obrigado`, {
     icon: ICONS.brand
   });
 }
 
 function helpMod() {
   return say(
-    'Mods: !setjogo !setlista A|B|C !addjogo !proximo !anterior !dica !setmeta !settitulo !brb !voltar !cena !obs !so !reset !morte',
+    'Mods: !setjogo !setlista A|B|C !addjogo !proximo !anterior !dica !setmeta !settitulo !brb !voltar !cena !obs !so !reset !morte !obrigado @user [valor]',
     { icon: ICONS.star }
   );
+}
+
+function thanksLine(t = {}) {
+  const parts = [
+    t.follow ? `➕${t.follow}` : null,
+    t.sub ? `⭐${t.sub}` : null,
+    t.gift ? `🎁${t.gift}` : null,
+    t.bits ? `💎${t.bits}` : null,
+    t.raid ? `📣${t.raid}` : null,
+    t.donation ? `💰${t.donation}` : null
+  ].filter(Boolean);
+  if (!parts.length) {
+    return say('Ainda sem apoios registados nesta sessão. !pix pra chave.', {
+      icon: ICONS.heart
+    });
+  }
+  return card('Apoios da sessão', parts, { icon: ICONS.heart });
 }
 
 module.exports = {
@@ -153,5 +178,6 @@ module.exports = {
   modOnlyHint,
   obsNote,
   helpPublic,
-  helpMod
+  helpMod,
+  thanksLine
 };

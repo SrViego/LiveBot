@@ -6,7 +6,7 @@ Bot de chat **bonito e prático** pra lives com vários jogos · Hallownest Bots
 HallownestBots/
   Morgana/   Discord
   Quirrel/   companhia no terminal
-  LiveBot/   Twitch (+ OBS opcional)
+  LiveBot/   Twitch (+ OBS + agradecimentos)
 ```
 
 ---
@@ -37,19 +37,6 @@ No chat: `!tema` mostra qual está ativo.
 
 Token: [twitchtokengenerator.com](https://twitchtokengenerator.com/) → **Bot Chat Token**.
 
-No terminal vais ver um banner assim:
-
-```
-══════════════════════════════════════════════
-  ✦ LiveBot  · Hallownest · v1.0.0
-──────────────────────────────────────────────
-  canal   #teu_canal
-  bot     teubot
-  jogo    Hades
-  obs     OBS: conectado …
-══════════════════════════════════════════════
-```
-
 ---
 
 ## Multi-jogo (streamer / mod)
@@ -72,9 +59,51 @@ No terminal vais ver um banner assim:
 | `!morte` `!win` `!stats` | contadores (mod +1 em morte/win) |
 | `!meta` `!titulo` `!hype` `!lurk` | meta, tema, hype, lurk |
 | `!oi` `!citacao` `!comandos` | acolhimento e lore |
-| `!discord` `!pix`… | teus textos em `data/commands.json` |
+| `!pix` `!doar` | chave PIX / link de apoio |
+| `!apoios` | follows, subs, bits e doações da sessão |
+| `!discord`… | teus textos em `data/commands.json` |
 
 Placeholders nos textos custom: `{user}` `{jogo}` `{meta}` `{mortes}`.
+
+---
+
+## Agradecimentos (follow, sub, bits, PIX)
+
+O bot **agradece sozinho** quando detecta:
+
+| Evento | Como chega | Precisa de |
+|--------|------------|------------|
+| **Sub / resub / gift** | IRC (tmi.js) | token de chat normal |
+| **Bits (cheer)** | IRC | token de chat normal |
+| **Raid** | IRC | token de chat normal |
+| **Follow** | EventSub WebSocket | `TWITCH_CLIENT_ID` + scope `moderator:read:followers` + bot **MOD** |
+| **PIX / doação** | chat ou comando | chave no `.env` / `alerts.json` |
+
+### PIX e outros apoios
+
+1. Coloca a chave ou link no `.env`:
+```env
+PIX_KEY=sua_chave_ou_https://livepix.gg/teuuser
+```
+   ou em `data/alerts.json` → `pixKey`.
+
+2. Chat: `!pix` / `!doar` mostra a mensagem.
+
+3. Quando alguém manda *“enviei pix”*, *“doei”*, etc., o bot agradece (lista em `donationKeywords` no `alerts.json`).
+
+4. Mod/streamer: `!obrigado @nick` ou `!obrigado @nick R$10 valeu!`
+
+Mensagens editáveis em **`data/alerts.json`** (`messages.follow`, `sub`, `cheer`, `donation`…).
+
+### Follow (opcional)
+
+```env
+TWITCH_CLIENT_ID=xxxxx   # app em https://dev.twitch.tv/console
+# Token com moderator:read:followers (e o bot como mod do canal)
+# ALERTS_FOLLOW=0        # desliga
+```
+
+Sem Client-ID, o resto (sub/bits/raid/PIX) continua a funcionar.
 
 ---
 
@@ -105,8 +134,11 @@ OBS_GAME_TEXT_SOURCE=TextoJogo
 |------|--------|
 | `src/style.js` | voz visual no chat (✦, limites Twitch) |
 | `src/console-ui.js` | banner e logs coloridos |
-| `data/state.json` | jogo, lista, mortes (persistente) |
+| `src/alerts.js` | templates de obrigado + PIX |
+| `src/events-twitch.js` | sub/bits/raid + EventSub follow |
+| `data/state.json` | jogo, lista, mortes, apoios |
 | `data/commands.json` | respostas tuas |
+| `data/alerts.json` | mensagens de thank + chave PIX |
 | `data/obs-scenes.json` | mapa OBS |
 
 ---
@@ -118,10 +150,15 @@ JOIN_MESSAGE=✦ Live no ar · {jogo} · !comandos
 SILENT_JOIN=1
 FIRST_CHAT_GREET=0
 COMMAND_COOLDOWN_MS=3000
+PIX_KEY=sua_chave
+TWITCH_CLIENT_ID=
+ALERTS_FOLLOW=1
+ALERTS_DONATION_AUTO=1
 ```
 
 - `SILENT_JOIN=1` — não fala ao conectar  
 - `FIRST_CHAT_GREET=1` — cumprimenta a 1ª msg de cada viewer (pode ser barulhento)
+- `ALERTS_DONATION_AUTO=0` — não auto-agradece “enviei pix” no chat
 
 ---
 

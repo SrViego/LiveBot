@@ -30,6 +30,15 @@ const defaultState = () => ({
   /** BRB */
   brb: false,
   brbMessage: 'Já volto — o prego precisa afiar. 🕯️',
+  /** contadores de agradecimentos da sessão (follow/sub/bits/doação…) */
+  thanks: {
+    follow: 0,
+    sub: 0,
+    gift: 0,
+    bits: 0,
+    raid: 0,
+    donation: 0
+  },
   updatedAt: 0
 });
 

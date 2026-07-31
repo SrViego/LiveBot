@@ -1,7 +1,7 @@
 {
   "name": "hallownest-livebot",
-  "version": "1.1.0",
-  "description": "✦ LiveBot — Twitch multi-jogo + OBS · Hallownest Bots",
+  "version": "1.2.0",
+  "description": "✦ LiveBot — Twitch multi-jogo + OBS + agradecimentos · Hallownest Bots",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -10,7 +10,8 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "obs-websocket-js": "^5.0.8",
-    "tmi.js": "^1.8.5"
+    "tmi.js": "^1.8.5",
+    "ws": "^8.21.1"
   },
   "engines": {
     "node": ">=20"

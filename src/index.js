@@ -1,5 +1,5 @@
 /**
- * ✦ LiveBot — Twitch multi-jogo + OBS (Hallownest Bots)
+ * ✦ LiveBot — Twitch multi-jogo + OBS + agradecimentos (Hallownest Bots)
  */
 
 require('dotenv').config();
@@ -9,6 +9,12 @@ const state = require('./state');
 const obs = require('./obs');
 const ui = require('./console-ui');
 const S = require('./style');
+const alerts = require('./alerts');
+const {
+  attachIrcEvents,
+  startFollowListener,
+  bumpThanks
+} = require('./events-twitch');
 
 const username = (process.env.TWITCH_USERNAME || '').toLowerCase().trim();
 const password = (process.env.TWITCH_OAUTH || '').trim();
@@ -17,6 +23,8 @@ const PREFIX = process.env.COMMAND_PREFIX || '!';
 const JOIN_MESSAGE = (process.env.JOIN_MESSAGE || '').trim();
 const COOLDOWN = Number(process.env.COMMAND_COOLDOWN_MS || 3000);
 const FIRST_CHAT_GREET = process.env.FIRST_CHAT_GREET === '1';
+const DONATION_AUTO = process.env.ALERTS_DONATION_AUTO !== '0';
+const DONATION_CD_MS = Number(process.env.DONATION_THANK_COOLDOWN_MS || 60000);
 
 if (!username || !password || !channel) {
   ui.err('Falta config no .env');
@@ -38,7 +46,9 @@ if (!password.startsWith('oauth:')) {
 const startedAt = Date.now();
 const cooldowns = new Map();
 const greeted = new Set();
+const donationCd = new Map();
 let messagesHandled = 0;
+let followWs = null;
 
 state.get();
 
@@ -74,6 +84,18 @@ function isSubOrVip(tags) {
   );
 }
 
+async function say(msg) {
+  if (!msg) return;
+  try {
+    await client.say(`#${channel}`, S.clip(msg));
+  } catch (err) {
+    ui.err(`say: ${err.message}`);
+  }
+}
+
+// Sub / bits / raid / gift
+attachIrcEvents(client, say);
+
 client.on('connected', (addr, port) => {
   ui.ok(`Twitch ${addr}:${port} → #${channel}`);
   if (obs.isEnabled()) {
@@ -87,6 +109,18 @@ client.on('connected', (addr, port) => {
   } else {
     ui.info('OBS desligado (OBS_ENABLED=1 no .env)');
   }
+
+  // Follow via EventSub (opcional — precisa TWITCH_CLIENT_ID + scope)
+  startFollowListener({
+    clientId: (process.env.TWITCH_CLIENT_ID || '').trim(),
+    oauth: password,
+    channelLogin: channel,
+    say
+  })
+    .then((ws) => {
+      followWs = ws;
+    })
+    .catch((err) => ui.warn(`Follow listener: ${err.message}`));
 });
 
 client.on('join', (ch, user, self) => {
@@ -99,12 +133,11 @@ client.on('join', (ch, user, self) => {
     );
     client.say(ch, S.clip(msg)).catch((err) => ui.err(err.message));
   } else {
-    // mensagem de entrada elegante por defeito
     const g = state.get().currentGame;
     const defaultJoin = S.say(
       g
-        ? `Live no ar · ${g} · digita !comandos`
-        : `Live multi-jogo no ar · !comandos · !jogo`,
+        ? `Live no ar · ${g} · digita !comandos · !pix`
+        : `Live multi-jogo no ar · !comandos · !jogo · !pix`,
       { icon: S.ICONS.heart }
     );
     if (process.env.SILENT_JOIN !== '1') {
@@ -120,7 +153,7 @@ client.on('message', async (ch, tags, message, self) => {
   const uid = tags['user-id'] || tags.username;
   const mod = isMod(tags);
 
-  // primeiro chat da sessão (opcional) — só se FIRST_CHAT_GREET=1
+  // primeiro chat da sessão (opcional)
   if (
     FIRST_CHAT_GREET &&
     uid &&
@@ -140,6 +173,31 @@ client.on('message', async (ch, tags, message, self) => {
   }
 
   if (uid) greeted.add(uid);
+
+  // Heurística: "enviei pix" / "doei" etc. → agradece (com cooldown)
+  if (
+    DONATION_AUTO &&
+    !message.startsWith(PREFIX) &&
+    alerts.looksLikeDonationMessage(message)
+  ) {
+    const now = Date.now();
+    const last = donationCd.get(uid) || 0;
+    if (now - last >= DONATION_CD_MS) {
+      donationCd.set(uid, now);
+      const text = alerts.donationThank(user);
+      if (text) {
+        try {
+          await client.say(ch, text);
+          bumpThanks('donation');
+          messagesHandled += 1;
+          ui.ok(`doação (chat) · ${user}`);
+        } catch (err) {
+          ui.err(`say: ${err.message}`);
+        }
+      }
+    }
+    return;
+  }
 
   if (!message.startsWith(PREFIX)) return;
 
@@ -191,7 +249,23 @@ client.connect().catch((err) => {
 
 function shutdown() {
   console.log('');
-  ui.info(`Sessão: ${messagesHandled} respostas · tchau do hall`);
+  const t = state.get().thanks || {};
+  const thanksBits = [
+    t.follow && `${t.follow} follows`,
+    t.sub && `${t.sub} subs`,
+    t.bits && `${t.bits} bits`,
+    t.donation && `${t.donation} doações`
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  ui.info(
+    `Sessão: ${messagesHandled} respostas${thanksBits ? ` · ${thanksBits}` : ''} · tchau do hall`
+  );
+  try {
+    if (followWs && followWs.readyState === 1) followWs.close();
+  } catch {
+    /* ignore */
+  }
   client.disconnect().finally(() => process.exit(0));
 }
 

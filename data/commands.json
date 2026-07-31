@@ -7,10 +7,7 @@
     "aliases": ["redes", "links"],
     "response": "Redes e links: (edita data/commands.json) · live: {jogo}"
   },
-  "pix": {
-    "aliases": ["donate", "doar", "cafe", "apoio"],
-    "response": "Se quiser apoiar a live: (cola pix/link) — obrigado, {user}! 🕯️"
-  },
+
   "horario": {
     "aliases": ["quando", "agenda"],
     "response": "Lives quando o mapa permitir — ativa a notificação! Agora: {jogo}"

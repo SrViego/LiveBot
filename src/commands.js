@@ -9,6 +9,8 @@ const state = require('./state');
 const obs = require('./obs');
 const S = require('./style');
 const { listThemes, resolveThemeName } = require('./theme');
+const alerts = require('./alerts');
+const { bumpThanks } = require('./events-twitch');
 
 const commandsFile = path.join(__dirname, '..', 'data', 'commands.json');
 
@@ -503,7 +505,14 @@ async function handleBuiltin(cmd, ctx) {
     }
 
     case 'stats':
-    case 'contadores':
+    case 'contadores': {
+      const t = s.thanks || {};
+      const thankBits = [
+        t.follow ? `➕${t.follow}` : null,
+        t.sub ? `⭐${t.sub}` : null,
+        t.bits ? `💎${t.bits}` : null,
+        t.donation ? `💰${t.donation}` : null
+      ].filter(Boolean);
       return {
         text: S.card(
           'Sessão',
@@ -511,11 +520,13 @@ async function handleBuiltin(cmd, ctx) {
             `💀 ${s.counters?.morte || 0}`,
             `🏆 ${s.counters?.win || 0}`,
             `🔥 ${s.counters?.hype || 0}`,
-            s.currentGame ? `🎮 ${s.currentGame}` : null
+            s.currentGame ? `🎮 ${s.currentGame}` : null,
+            thankBits.length ? thankBits.join(' ') : null
           ],
           { icon: S.ICONS.star }
         )
       };
+    }
 
     case 'meta':
     case 'goal':
@@ -610,6 +621,54 @@ async function handleBuiltin(cmd, ctx) {
           { icon: S.ICONS.lurk }
         )
       };
+
+    // ── PIX / doações / apoios ─────────────────────────────
+    case 'pix':
+    case 'doar':
+    case 'donate':
+    case 'cafe':
+    case 'café':
+    case 'apoio':
+      return { text: alerts.pixInfo() };
+
+    case 'apoios':
+    case 'thanks':
+    case 'obrigados':
+      return { text: S.thanksLine(s.thanks || {}) };
+
+    case 'obrigado':
+    case 'agradecimento':
+    case 'thx': {
+      // mod: !obrigado @user [valor] [nota…]
+      if (!ctx.mod) return { text: null, isModOnly: true };
+      const nick = first.replace(/^@/, '');
+      if (!nick) {
+        return {
+          text: S.say('Uso: !obrigado @user [valor] [nota]', { icon: S.ICONS.pix }),
+          isModOnly: true
+        };
+      }
+      const rest = (ctx.args || []).slice(1);
+      let amount = '';
+      let note = '';
+      if (rest.length) {
+        // se o 1º resto parece valor (R$10, 10, 10reais, 5 pix…)
+        const maybeAmt = rest[0];
+        if (/^r\$?\s*\d/i.test(maybeAmt) || /^\d+([.,]\d+)?(rs?|reais?)?$/i.test(maybeAmt)) {
+          amount = maybeAmt;
+          note = rest.slice(1).join(' ').trim();
+        } else {
+          note = rest.join(' ').trim();
+        }
+      }
+      bumpThanks('donation');
+      const text =
+        alerts.donationThank(nick, amount, note) ||
+        S.say(`Obrigado pela doação, ${nick}${amount ? ` (${amount})` : ''}! 🕯️`, {
+          icon: S.ICONS.pix
+        });
+      return { text, isModOnly: true };
+    }
 
     default:
       return { text: null };
