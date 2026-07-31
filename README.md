@@ -1,164 +1,131 @@
 # ✦ LiveBot — Twitch multi-jogo
 
-Bot de chat **bonito e prático** pra lives com vários jogos · Hallownest Bots.
+Bot de chat pra lives com vários jogos · Hallownest Bots · v1.3
 
 ```
 HallownestBots/
   Morgana/   Discord
-  Quirrel/   companhia no terminal
-  LiveBot/   Twitch (+ OBS + agradecimentos)
+  Quirrel/   terminal
+  LiveBot/   Twitch (+ OBS + apoios + polls + pedidos)
 ```
 
 ---
 
-## Subir em 1 minuto
+## Subir
 
 ```bash
 cd ~/Documentos/HallownestBots/LiveBot
 cp .env.example .env
 # TWITCH_USERNAME / TWITCH_OAUTH / TWITCH_CHANNEL
+# opcional: TWITCH_CLIENT_ID (polls, !so com jogo, follows)
 npm install
 npm start
 ```
 
-### Tema de cores (terminal)
-
-No `.env`:
-
-```env
-LIVEBOT_THEME=coral   # default — coral Morgana
-# LIVEBOT_THEME=void  # abismo / roxo
-# LIVEBOT_THEME=pale  # corte pálida / ouro
-# LIVEBOT_THEME=moss  # greenpath / verde
-```
-
-O chat da Twitch **não** aceita cores no texto do bot — o tema pinta o **teu terminal** (banner, logs, comandos).  
-No chat: `!tema` mostra qual está ativo.
-
-Token: [twitchtokengenerator.com](https://twitchtokengenerator.com/) → **Bot Chat Token**.
-
 ---
 
-## Multi-jogo (streamer / mod)
-
-```text
-!setlista Hades | Hollow Knight | Celeste | Stardew
-!setjogo Hades
-!setmeta 1 boss ou 2h de vibes
-!settitulo Noite multi-jogo no hall
-!dica build arco / fase difícil
-!proximo          → próximo da lista (+ cena OBS)
-!brb / !voltar
-```
-
-## Chat
+## Comandos chat
 
 | | |
 |--|--|
-| `!jogo` `!jogos` | jogo atual e roteiro |
-| `!morte` `!win` `!stats` | contadores (mod +1 em morte/win) |
-| `!meta` `!titulo` `!hype` `!lurk` | meta, tema, hype, lurk |
-| `!oi` `!citacao` `!comandos` | acolhimento e lore |
-| `!pix` `!doar` | chave PIX / link de apoio |
-| `!apoios` | follows, subs, bits e doações da sessão |
-| `!discord`… | teus textos em `data/commands.json` |
+| `!jogo` `!jogos` | jogo e roteiro |
+| `!morte` `!win` `!stats` | contadores |
+| `!meta` | meta + barra `███░░ 60%` |
+| `!pedido …` / `!pedidos` | fila de pedidos |
+| `!pix` `!apoios` | apoio / contagem |
+| `!hype` `!lurk` `!citacao` `!oi` | vibe |
+| custom em `data/commands.json` | `{user}` `{jogo}` `{meta}` `{mortes}` · `"vip": true` |
 
-Placeholders nos textos custom: `{user}` `{jogo}` `{meta}` `{mortes}`.
+### Mods
 
----
-
-## Agradecimentos (follow, sub, bits, PIX)
-
-O bot **agradece sozinho** quando detecta:
-
-| Evento | Como chega | Precisa de |
-|--------|------------|------------|
-| **Sub / resub / gift** | IRC (tmi.js) | token de chat normal |
-| **Bits (cheer)** | IRC | token de chat normal |
-| **Raid** | IRC | token de chat normal |
-| **Follow** | EventSub WebSocket | `TWITCH_CLIENT_ID` + scope `moderator:read:followers` + bot **MOD** |
-| **PIX / doação** | chat ou comando | chave no `.env` / `alerts.json` |
-
-### PIX e outros apoios
-
-1. Coloca a chave ou link no `.env`:
-```env
-PIX_KEY=sua_chave_ou_https://livepix.gg/teuuser
-```
-   ou em `data/alerts.json` → `pixKey`.
-
-2. Chat: `!pix` / `!doar` mostra a mensagem.
-
-3. Quando alguém manda *“enviei pix”*, *“doei”*, etc., o bot agradece (lista em `donationKeywords` no `alerts.json`).
-
-4. Mod/streamer: `!obrigado @nick` ou `!obrigado @nick R$10 valeu!`
-
-Mensagens editáveis em **`data/alerts.json`** (`messages.follow`, `sub`, `cheer`, `donation`…).
-
-### Follow (opcional)
-
-```env
-TWITCH_CLIENT_ID=xxxxx   # app em https://dev.twitch.tv/console
-# Token com moderator:read:followers (e o bot como mod do canal)
-# ALERTS_FOLLOW=0        # desliga
-```
-
-Sem Client-ID, o resto (sub/bits/raid/PIX) continua a funcionar.
+| | |
+|--|--|
+| `!setjogo` `!setlista` `!proximo` | multi-jogo + OBS |
+| `!setmeta 50/100 reais` | meta com progresso |
+| `!meta+ 10` / `!meta- 5` | ajusta progresso |
+| `!pedido next` `skip` `clear` | fila |
+| `!poll Pergunta \| A \| B` | **poll Twitch API** |
+| `!poll end` | encerra poll |
+| `!pred Título \| Sim \| Não` | **prediction API** |
+| `!pred end` | cancela prediction |
+| `!so @canal` | shoutout (+ last game se CLIENT_ID) |
+| `!obrigado @nick R$10` | agradece doação |
+| `!brb` `!voltar` `!cena` `!obs` | cena / BRB |
 
 ---
 
-## OBS (opcional)
+## Features
 
-1. OBS → WebSocket ON (porta 4455 + senha)  
-2. `.env`:
-```env
-OBS_ENABLED=1
-OBS_URL=ws://127.0.0.1:4455
-OBS_PASSWORD=...
-OBS_GAME_TEXT_SOURCE=TextoJogo
+### Polls / predictions (Twitch API)
+`TWITCH_CLIENT_ID` + token com `channel:manage:polls` e/ou `channel:manage:predictions`.
+
+### Clip reminder
+A cada 30 min (default): lembrete de clip.  
+`CLIP_REMINDER=0` desliga · `CLIP_REMINDER_MS=1800000`
+
+### Visitantes
+Conta visitas multi-live. Com `FIRST_CHAT_GREET=1` cumprimenta a 1ª.  
+Revisitas: “3ª visita no hall”. `VISITOR_GREET=0` desliga revisitas.
+
+### Meta com progresso
+```text
+!setmeta 0/100 reais
+!meta+ 25
+!meta
+→ Meta: 25/100 reais · ██░░░░░░░░ 25%
 ```
-3. Mapa em `data/obs-scenes.json` (jogo → cena)
 
-| Comando | Efeito |
-|---------|--------|
-| `!setjogo` / `!proximo` | cena + texto |
-| `!brb` / `!voltar` | cenas BRB / Live |
-| `!cena Nome` | troca manual |
-| `!obs` | status |
+### Pedidos
+```text
+!pedido joga Celeste
+!pedidos
+!pedido next   (mod)
+```
+
+### LivePix webhook
+```env
+LIVEPIX_WEBHOOK_PORT=8787
+# POST http://127.0.0.1:8787/  JSON com username + amount
+```
+Opcional: tunnel (cloudflared/ngrok) se a LivePix precisar de URL pública.
+
+### Cooldowns
+- Global por comando: `COMMAND_COOLDOWN_MS`
+- Por user+comando: `USER_COOLDOWN_MS`  
+Mods ignoram (exceto `!hype`).
+
+### VIP / sub only
+Em `commands.json`:
+```json
+"segredo": { "vip": true, "response": "Só sub/VIP, {user}!" }
+```
+
+### Dashboard + backup
+- Terminal atualiza status a cada 15s (`DASHBOARD=0` off)
+- Ao sair (Ctrl+C): resumo + backup em `data/backups/`
+- `SESSION_SUMMARY_CHAT=1` manda resumo no chat
+
+### Agradecimentos
+Sub/bits/raid (IRC) · follow (EventSub) · PIX (chat/mod/webhook)
+
+### OBS
+`OBS_ENABLED=1` + `data/obs-scenes.json`
 
 ---
 
 ## Ficheiros
 
-| Path | Função |
-|------|--------|
-| `src/style.js` | voz visual no chat (✦, limites Twitch) |
-| `src/console-ui.js` | banner e logs coloridos |
-| `src/alerts.js` | templates de obrigado + PIX |
-| `src/events-twitch.js` | sub/bits/raid + EventSub follow |
-| `data/state.json` | jogo, lista, mortes, apoios |
-| `data/commands.json` | respostas tuas |
-| `data/alerts.json` | mensagens de thank + chave PIX |
-| `data/obs-scenes.json` | mapa OBS |
-
----
-
-## .env útil
-
-```env
-JOIN_MESSAGE=✦ Live no ar · {jogo} · !comandos
-SILENT_JOIN=1
-FIRST_CHAT_GREET=0
-COMMAND_COOLDOWN_MS=3000
-PIX_KEY=sua_chave
-TWITCH_CLIENT_ID=
-ALERTS_FOLLOW=1
-ALERTS_DONATION_AUTO=1
-```
-
-- `SILENT_JOIN=1` — não fala ao conectar  
-- `FIRST_CHAT_GREET=1` — cumprimenta a 1ª msg de cada viewer (pode ser barulhento)
-- `ALERTS_DONATION_AUTO=0` — não auto-agradece “enviei pix” no chat
+| Path | |
+|------|--|
+| `src/twitch-api.js` | Helix polls/pred/so |
+| `src/session.js` | meta bar + backup |
+| `src/visitors.js` | visitas |
+| `src/clips-reminder.js` | clips |
+| `src/webhook-livepix.js` | doações HTTP |
+| `src/dashboard.js` | status terminal |
+| `data/alerts.json` | msgs de thank |
+| `data/commands.json` | textos custom (+ vip) |
+| `data/backups/` | state por sessão |
 
 ---
 

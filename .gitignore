@@ -4,3 +4,7 @@ data/stats.json
 data/state.json
 data/memory.json
 *.log
+
+# backups de sessão
+data/backups/
+data/state.json

@@ -19,5 +19,10 @@
   "hallownest": {
     "aliases": ["hk", "hollow"],
     "response": "Hallownest espera. Não te esqueças do mapa. 🕯️ mortes: {mortes}"
+  },
+  "hypesub": {
+    "aliases": ["subhype"],
+    "vip": true,
+    "response": "Hype de sub/VIP, {user}! O fogo do hall brilha mais ⭐ · {jogo}"
   }
 }

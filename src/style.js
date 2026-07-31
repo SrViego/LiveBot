@@ -126,23 +126,49 @@ function obsNote(base, obsResult) {
 
 function helpPublic(customNames = []) {
   const core =
-    '!jogo !jogos !morte !win !stats !meta !hype !lurk !citacao !oi !pix !apoios';
+    '!jogo !jogos !morte !win !stats !meta !pedido !pedidos !hype !lurk !citacao !oi !pix !apoios';
   const filtered = customNames.filter(
-    (n) => !['pix', 'donate', 'doar', 'cafe', 'apoio'].includes(String(n).toLowerCase())
+    (n) =>
+      !['pix', 'donate', 'doar', 'cafe', 'apoio'].includes(String(n).toLowerCase())
   );
   const extra = filtered.length
     ? ` · ${filtered.map((n) => `!${n}`).join(' ')}`
     : '';
-  return say(`Comandos: ${core}${extra} · mods: !setjogo !proximo !brb !cena !obrigado`, {
-    icon: ICONS.brand
-  });
+  return say(
+    `Comandos: ${core}${extra} · mods: !setjogo !proximo !poll !so !obrigado`,
+    { icon: ICONS.brand }
+  );
 }
 
 function helpMod() {
   return say(
-    'Mods: !setjogo !setlista A|B|C !addjogo !proximo !anterior !dica !setmeta !settitulo !brb !voltar !cena !obs !so !reset !morte !obrigado @user [valor]',
+    'Mods: !setjogo !setlista !proximo !setmeta 50/100 !meta+ n !pedido next !poll A|B !pred A|B !so !brb !cena !obrigado',
     { icon: ICONS.star }
   );
+}
+
+function progressBar(current, target, width = 10) {
+  if (!target || target <= 0) return '';
+  const ratio = Math.max(0, Math.min(1, Number(current) / Number(target)));
+  const filled = Math.round(ratio * width);
+  return `${'█'.repeat(filled)}${'░'.repeat(Math.max(0, width - filled))} ${Math.round(ratio * 100)}%`;
+}
+
+function metaLine(s) {
+  const g = s?.metaGoal;
+  if (g && g.target != null) {
+    const cur = Number(g.current) || 0;
+    const tgt = Number(g.target) || 0;
+    const unit = g.unit ? ` ${g.unit}` : '';
+    const label = g.label || s.meta || 'Meta';
+    return say(`${label}: ${cur}/${tgt}${unit} · ${progressBar(cur, tgt)}`, {
+      icon: ICONS.meta
+    });
+  }
+  if (s?.meta) return say(`Meta: ${s.meta}`, { icon: ICONS.meta });
+  return say('Sem meta. Mod: !setmeta 50/100 reais  ou  !setmeta texto', {
+    icon: ICONS.meta
+  });
 }
 
 function thanksLine(t = {}) {
@@ -179,5 +205,7 @@ module.exports = {
   obsNote,
   helpPublic,
   helpMod,
-  thanksLine
+  thanksLine,
+  progressBar,
+  metaLine
 };

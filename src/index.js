@@ -1,5 +1,5 @@
 /**
- * ✦ LiveBot — Twitch multi-jogo + OBS + agradecimentos (Hallownest Bots)
+ * ✦ LiveBot — Twitch multi-jogo + OBS + agradecimentos + QoL (Hallownest Bots)
  */
 
 require('dotenv').config();
@@ -15,6 +15,11 @@ const {
   startFollowListener,
   bumpThanks
 } = require('./events-twitch');
+const visitors = require('./visitors');
+const { startClipReminder } = require('./clips-reminder');
+const { startLivePixWebhook } = require('./webhook-livepix');
+const { startDashboard } = require('./dashboard');
+const { backupState, buildSummary } = require('./session');
 
 const username = (process.env.TWITCH_USERNAME || '').toLowerCase().trim();
 const password = (process.env.TWITCH_OAUTH || '').trim();
@@ -22,9 +27,12 @@ const channel = (process.env.TWITCH_CHANNEL || '').toLowerCase().replace(/^#/, '
 const PREFIX = process.env.COMMAND_PREFIX || '!';
 const JOIN_MESSAGE = (process.env.JOIN_MESSAGE || '').trim();
 const COOLDOWN = Number(process.env.COMMAND_COOLDOWN_MS || 3000);
+const USER_COOLDOWN = Number(process.env.USER_COOLDOWN_MS || 5000);
 const FIRST_CHAT_GREET = process.env.FIRST_CHAT_GREET === '1';
+const VISITOR_GREET = process.env.VISITOR_GREET !== '0';
 const DONATION_AUTO = process.env.ALERTS_DONATION_AUTO !== '0';
 const DONATION_CD_MS = Number(process.env.DONATION_THANK_COOLDOWN_MS || 60000);
+const SESSION_SUMMARY_CHAT = process.env.SESSION_SUMMARY_CHAT === '1';
 
 if (!username || !password || !channel) {
   ui.err('Falta config no .env');
@@ -44,13 +52,19 @@ if (!password.startsWith('oauth:')) {
 }
 
 const startedAt = Date.now();
+/** cooldown global por comando */
 const cooldowns = new Map();
-const greeted = new Set();
+/** cooldown por user+comando */
+const userCooldowns = new Map();
 const donationCd = new Map();
 let messagesHandled = 0;
 let followWs = null;
+let clipRem = null;
+let webhook = null;
+let dash = null;
 
 state.get();
+visitors.startSession();
 
 ui.banner({
   channel,
@@ -80,7 +94,8 @@ function isSubOrVip(tags) {
   return (
     tags.subscriber === true ||
     tags.badges?.vip === '1' ||
-    tags.badges?.premium === '1'
+    tags.badges?.premium === '1' ||
+    tags.badges?.founder === '1'
   );
 }
 
@@ -93,7 +108,6 @@ async function say(msg) {
   }
 }
 
-// Sub / bits / raid / gift
 attachIrcEvents(client, say);
 
 client.on('connected', (addr, port) => {
@@ -110,7 +124,6 @@ client.on('connected', (addr, port) => {
     ui.info('OBS desligado (OBS_ENABLED=1 no .env)');
   }
 
-  // Follow via EventSub (opcional — precisa TWITCH_CLIENT_ID + scope)
   startFollowListener({
     clientId: (process.env.TWITCH_CLIENT_ID || '').trim(),
     oauth: password,
@@ -121,6 +134,16 @@ client.on('connected', (addr, port) => {
       followWs = ws;
     })
     .catch((err) => ui.warn(`Follow listener: ${err.message}`));
+
+  clipRem = startClipReminder({ say });
+  webhook = startLivePixWebhook({ say });
+  dash = startDashboard(() => ({ messagesHandled, startedAt }));
+
+  if (process.env.CLIP_REMINDER !== '0') {
+    ui.info(
+      `Clip reminder: cada ${Math.round(Number(process.env.CLIP_REMINDER_MS || 1.8e6) / 60000)} min`
+    );
+  }
 });
 
 client.on('join', (ch, user, self) => {
@@ -136,8 +159,8 @@ client.on('join', (ch, user, self) => {
     const g = state.get().currentGame;
     const defaultJoin = S.say(
       g
-        ? `Live no ar · ${g} · digita !comandos · !pix`
-        : `Live multi-jogo no ar · !comandos · !jogo · !pix`,
+        ? `Live no ar · ${g} · !comandos · !pix · !pedido`
+        : `Live multi-jogo no ar · !comandos · !jogo · !pedido · !pix`,
       { icon: S.ICONS.heart }
     );
     if (process.env.SILENT_JOIN !== '1') {
@@ -152,29 +175,31 @@ client.on('message', async (ch, tags, message, self) => {
   const user = tags['display-name'] || tags.username || 'alguém';
   const uid = tags['user-id'] || tags.username;
   const mod = isMod(tags);
+  const vip = isSubOrVip(tags);
 
-  // primeiro chat da sessão (opcional)
-  if (
-    FIRST_CHAT_GREET &&
-    uid &&
-    !greeted.has(uid) &&
-    !message.startsWith(PREFIX) &&
-    !mod
-  ) {
-    greeted.add(uid);
-    const text = S.welcome(user, state.get().currentGame);
-    try {
-      await client.say(ch, text);
-      ui.cmdLog(user, '(welcome)', true);
-    } catch {
-      /* ignore */
+  // visitantes / Xª visita (1 anúncio por sessão de bot)
+  if (uid && !message.startsWith(PREFIX) && !mod) {
+    const v = visitors.noteChat(uid, user);
+    if (v.isNewSession && v.text) {
+      const greetFirst = FIRST_CHAT_GREET && v.visit === 1;
+      const greetReturn = VISITOR_GREET && v.visit > 1;
+      if (greetFirst || greetReturn) {
+        try {
+          const text = greetFirst
+            ? S.welcome(user, state.get().currentGame)
+            : v.text;
+          await client.say(ch, text);
+          messagesHandled += 1;
+          ui.cmdLog(user, greetFirst ? '(welcome)' : `(visita ${v.visit})`, true);
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
     }
-    return;
   }
 
-  if (uid) greeted.add(uid);
-
-  // Heurística: "enviei pix" / "doei" etc. → agradece (com cooldown)
+  // Heurística doação no chat
   if (
     DONATION_AUTO &&
     !message.startsWith(PREFIX) &&
@@ -191,6 +216,7 @@ client.on('message', async (ch, tags, message, self) => {
           bumpThanks('donation');
           messagesHandled += 1;
           ui.ok(`doação (chat) · ${user}`);
+          dash?.refresh?.();
         } catch (err) {
           ui.err(`say: ${err.message}`);
         }
@@ -208,26 +234,36 @@ client.on('message', async (ch, tags, message, self) => {
   const args = parts.slice(1);
 
   const now = Date.now();
-  const last = cooldowns.get(name) || 0;
+  // cooldown global por comando
+  const lastCmd = cooldowns.get(name) || 0;
+  // cooldown por user
+  const ukey = `${uid}:${name}`;
+  const lastUser = userCooldowns.get(ukey) || 0;
   const skipCd = mod && name !== 'hype';
-  if (!skipCd && now - last < COOLDOWN) return;
+  if (!skipCd) {
+    if (now - lastCmd < COOLDOWN) return;
+    if (USER_COOLDOWN > 0 && now - lastUser < USER_COOLDOWN) return;
+  }
   cooldowns.set(name, now);
+  userCooldowns.set(ukey, now);
 
   const result = await resolveCommand(name, {
     user,
     args,
     startedAt,
     mod,
-    vip: isSubOrVip(tags)
+    vip
   });
 
   if (!result.text) return;
   if (result.isModOnly && !mod) return;
+  // vip-only already answered with message or null
 
   try {
     await client.say(ch, S.clip(result.text));
     messagesHandled += 1;
     ui.cmdLog(user, name, true);
+    dash?.refresh?.();
   } catch (err) {
     ui.err(`say: ${err.message}`);
   }
@@ -247,21 +283,23 @@ client.connect().catch((err) => {
   process.exit(1);
 });
 
-function shutdown() {
+async function shutdown() {
   console.log('');
-  const t = state.get().thanks || {};
-  const thanksBits = [
-    t.follow && `${t.follow} follows`,
-    t.sub && `${t.sub} subs`,
-    t.bits && `${t.bits} bits`,
-    t.donation && `${t.donation} doações`
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  ui.info(
-    `Sessão: ${messagesHandled} respostas${thanksBits ? ` · ${thanksBits}` : ''} · tchau do hall`
-  );
+  const summary = buildSummary({ startedAt, messagesHandled });
+  const bak = backupState();
+  ui.info(`Resumo: ${summary}`);
+  if (bak) ui.ok(`Backup: ${bak}`);
+  if (SESSION_SUMMARY_CHAT) {
+    try {
+      await say(S.say(`Fim da sessão · ${summary}`, { icon: S.ICONS.heart }));
+    } catch {
+      /* ignore */
+    }
+  }
   try {
+    clipRem?.stop?.();
+    webhook?.stop?.();
+    dash?.stop?.();
     if (followWs && followWs.readyState === 1) followWs.close();
   } catch {
     /* ignore */
@@ -269,5 +307,9 @@ function shutdown() {
   client.disconnect().finally(() => process.exit(0));
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => {
+  shutdown();
+});
+process.on('SIGTERM', () => {
+  shutdown();
+});

@@ -1,7 +1,7 @@
 {
   "name": "hallownest-livebot",
-  "version": "1.2.0",
-  "description": "✦ LiveBot — Twitch multi-jogo + OBS + agradecimentos · Hallownest Bots",
+  "version": "1.3.0",
+  "description": "✦ LiveBot — multi-jogo + OBS + polls + pedidos + meta + webhooks · Hallownest Bots",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

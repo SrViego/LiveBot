@@ -11,6 +11,8 @@ const S = require('./style');
 const { listThemes, resolveThemeName } = require('./theme');
 const alerts = require('./alerts');
 const { bumpThanks } = require('./events-twitch');
+const twitchApi = require('./twitch-api');
+const { formatMeta } = require('./session');
 
 const commandsFile = path.join(__dirname, '..', 'data', 'commands.json');
 
@@ -22,16 +24,56 @@ function loadCustom() {
   }
 }
 
-function buildAliasMap(custom) {
+/** @returns {Map<string, { response: string, vip?: boolean, mod?: boolean, name: string }>} */
+function buildCustomMap(custom) {
   const map = new Map();
   for (const [name, def] of Object.entries(custom)) {
     if (!def?.response) continue;
-    map.set(name.toLowerCase(), def.response);
+    const entry = {
+      response: def.response,
+      vip: Boolean(def.vip || def.subOnly || def.subscriber),
+      mod: Boolean(def.mod || def.modOnly),
+      name
+    };
+    map.set(name.toLowerCase(), entry);
     for (const a of def.aliases || []) {
-      map.set(String(a).toLowerCase(), def.response);
+      map.set(String(a).toLowerCase(), entry);
     }
   }
   return map;
+}
+
+function buildAliasMap(custom) {
+  const map = new Map();
+  for (const [k, v] of buildCustomMap(custom)) {
+    map.set(k, v.response);
+  }
+  return map;
+}
+
+function parseMetaArg(arg) {
+  // "50/100 reais" | "50 / 100" | "texto livre"
+  const m = String(arg)
+    .trim()
+    .match(/^(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)(?:\s+(.+))?$/);
+  if (m) {
+    const current = parseFloat(m[1].replace(',', '.'));
+    const target = parseFloat(m[2].replace(',', '.'));
+    const rest = (m[3] || '').trim();
+    // "reais da live" or unit only
+    let unit = '';
+    let label = 'Meta';
+    if (rest) {
+      const parts = rest.split(/\s+/);
+      if (parts.length === 1) unit = parts[0];
+      else {
+        unit = parts[0];
+        label = rest;
+      }
+    }
+    return { mode: 'goal', current, target, unit, label };
+  }
+  return { mode: 'text', text: arg.slice(0, 200) };
 }
 
 function gameLine(s = state.get()) {
@@ -121,9 +163,31 @@ async function handleBuiltin(cmd, ctx) {
       if (!nick) {
         return { text: S.say('Uso: !so <canal>', { icon: S.ICONS.so }), isModOnly: true };
       }
+      if (!ctx.mod) return { text: null, isModOnly: true };
+      if (twitchApi.isReady()) {
+        const info = await twitchApi.getChannelInfo(nick);
+        if (info.ok) {
+          const game = info.game ? ` · last: ${info.game}` : '';
+          const title = info.title ? ` · “${String(info.title).slice(0, 60)}”` : '';
+          return {
+            text: S.say(
+              `Shoutout → twitch.tv/${info.login} (${info.displayName})${game}${title} — visita o hall deles!`,
+              { icon: S.ICONS.so }
+            ),
+            isModOnly: true
+          };
+        }
+        return {
+          text: S.say(
+            `Shoutout → twitch.tv/${nick.toLowerCase()} — (API: ${info.error || 'falhou'})`,
+            { icon: S.ICONS.so }
+          ),
+          isModOnly: true
+        };
+      }
       return {
         text: S.say(
-          `Shoutout → twitch.tv/${nick.toLowerCase()} — visita o hall deles!`,
+          `Shoutout → twitch.tv/${nick.toLowerCase()} — visita o hall deles! (TWITCH_CLIENT_ID p/ jogo)`,
           { icon: S.ICONS.so }
         ),
         isModOnly: true
@@ -530,25 +594,75 @@ async function handleBuiltin(cmd, ctx) {
 
     case 'meta':
     case 'goal':
-      return {
-        text: s.meta
-          ? S.say(`Meta: ${s.meta}`, { icon: S.ICONS.meta })
-          : S.say('Sem meta. Mod: !setmeta texto', { icon: S.ICONS.meta })
-      };
+      return { text: S.metaLine(s) };
 
     case 'setmeta': {
       if (!arg) {
         return {
-          text: S.say('Uso: !setmeta texto da meta', { icon: S.ICONS.meta }),
+          text: S.say(
+            'Uso: !setmeta 50/100 reais  ·  !setmeta 3/5 bosses  ·  !setmeta texto livre',
+            { icon: S.ICONS.meta }
+          ),
           isModOnly: true
         };
       }
-      s.meta = arg.slice(0, 200);
+      const parsed = parseMetaArg(arg);
+      if (parsed.mode === 'goal') {
+        s.metaGoal = {
+          label: parsed.label || 'Meta',
+          current: parsed.current,
+          target: parsed.target,
+          unit: parsed.unit || ''
+        };
+        s.meta = formatMeta(s) || arg.slice(0, 200);
+      } else {
+        s.metaGoal = null;
+        s.meta = parsed.text;
+      }
       state.persist();
-      return {
-        text: S.say(`Meta: ${s.meta}`, { icon: S.ICONS.meta }),
-        isModOnly: true
-      };
+      return { text: S.metaLine(s), isModOnly: true };
+    }
+
+    case 'meta+':
+    case 'metaadd':
+    case 'addmeta': {
+      if (!ctx.mod) return { text: null, isModOnly: true };
+      if (!s.metaGoal?.target) {
+        return {
+          text: S.say('Define progresso: !setmeta 0/100 reais', { icon: S.ICONS.meta }),
+          isModOnly: true
+        };
+      }
+      const delta = parseFloat(String(first || '1').replace(',', '.'));
+      if (Number.isNaN(delta)) {
+        return {
+          text: S.say('Uso: !meta+ 10', { icon: S.ICONS.meta }),
+          isModOnly: true
+        };
+      }
+      s.metaGoal.current = (Number(s.metaGoal.current) || 0) + delta;
+      s.meta = formatMeta(s);
+      state.persist();
+      return { text: S.metaLine(s), isModOnly: true };
+    }
+
+    case 'meta-':
+    case 'metasub': {
+      if (!ctx.mod) return { text: null, isModOnly: true };
+      if (!s.metaGoal?.target) {
+        return {
+          text: S.say('Sem meta com número.', { icon: S.ICONS.meta }),
+          isModOnly: true
+        };
+      }
+      const delta = parseFloat(String(first || '1').replace(',', '.'));
+      if (Number.isNaN(delta)) {
+        return { text: S.say('Uso: !meta- 5', { icon: S.ICONS.meta }), isModOnly: true };
+      }
+      s.metaGoal.current = Math.max(0, (Number(s.metaGoal.current) || 0) - delta);
+      s.meta = formatMeta(s);
+      state.persist();
+      return { text: S.metaLine(s), isModOnly: true };
     }
 
     case 'titulo':
@@ -652,7 +766,6 @@ async function handleBuiltin(cmd, ctx) {
       let amount = '';
       let note = '';
       if (rest.length) {
-        // se o 1º resto parece valor (R$10, 10, 10reais, 5 pix…)
         const maybeAmt = rest[0];
         if (/^r\$?\s*\d/i.test(maybeAmt) || /^\d+([.,]\d+)?(rs?|reais?)?$/i.test(maybeAmt)) {
           amount = maybeAmt;
@@ -662,12 +775,257 @@ async function handleBuiltin(cmd, ctx) {
         }
       }
       bumpThanks('donation');
+      if (amount && s.metaGoal?.target != null) {
+        const n = parseFloat(String(amount).replace(/[^\d.,]/g, '').replace(',', '.'));
+        if (!Number.isNaN(n)) {
+          s.metaGoal.current = (Number(s.metaGoal.current) || 0) + n;
+          s.meta = formatMeta(s);
+          state.persist();
+        }
+      }
       const text =
         alerts.donationThank(nick, amount, note) ||
         S.say(`Obrigado pela doação, ${nick}${amount ? ` (${amount})` : ''}! 🕯️`, {
           icon: S.ICONS.pix
         });
       return { text, isModOnly: true };
+    }
+
+    // ── pedidos ────────────────────────────────────────────
+    case 'pedido':
+    case 'request':
+    case 'sugestao':
+    case 'sugestão': {
+      if (!s.requests) s.requests = [];
+      // mod shortcuts: !pedido next | skip | clear
+      if (ctx.mod && ['next', 'proximo', 'próximo', 'skip', 'clear', 'limpar', 'lista'].includes(sub)) {
+        if (sub === 'lista') {
+          /* fall through to list via pedidos */
+        } else if (sub === 'clear' || sub === 'limpar') {
+          s.requests = [];
+          state.persist();
+          return {
+            text: S.say('Fila de pedidos limpa.', { icon: S.ICONS.ok }),
+            isModOnly: true
+          };
+        } else if (sub === 'skip') {
+          const skipped = s.requests.shift();
+          state.persist();
+          return {
+            text: skipped
+              ? S.say(`Pulou: ${skipped.user} — ${skipped.text}`, { icon: S.ICONS.rm })
+              : S.say('Fila vazia.', { icon: S.ICONS.warn }),
+            isModOnly: true
+          };
+        } else {
+          // next
+          const item = s.requests.shift();
+          state.persist();
+          if (!item) {
+            return {
+              text: S.say('Fila vazia. Chat: !pedido …', { icon: S.ICONS.list }),
+              isModOnly: true
+            };
+          }
+          const left = s.requests.length;
+          return {
+            text: S.say(
+              `Próximo pedido: ${item.user} — ${item.text}${left ? ` · restam ${left}` : ' · fila vazia'}`,
+              { icon: S.ICONS.next }
+            ),
+            isModOnly: true
+          };
+        }
+      }
+      const text = arg || '';
+      if (!text || ['next', 'proximo', 'próximo', 'skip', 'clear', 'limpar', 'lista'].includes(sub)) {
+        return {
+          text: S.say('Uso: !pedido quero ver X  ·  mods: !pedido next|skip|clear', {
+            icon: S.ICONS.list
+          })
+        };
+      }
+      if (s.requests.length >= 30) {
+        return {
+          text: S.say('Fila cheia (30). Espera um pouco.', { icon: S.ICONS.warn })
+        };
+      }
+      // 1 pedido por user na fila
+      if (s.requests.some((r) => r.user.toLowerCase() === ctx.user.toLowerCase())) {
+        return {
+          text: S.say(`${ctx.user}, já tens um pedido na fila. !pedidos`, {
+            icon: S.ICONS.warn
+          })
+        };
+      }
+      s.requests.push({
+        user: ctx.user,
+        text: text.slice(0, 120),
+        at: Date.now()
+      });
+      state.persist();
+      return {
+        text: S.say(
+          `Pedido #${s.requests.length} de ${ctx.user}: ${text.slice(0, 80)}`,
+          { icon: S.ICONS.add }
+        )
+      };
+    }
+
+    case 'pedidos':
+    case 'requests':
+    case 'fila': {
+      if (!s.requests?.length) {
+        return {
+          text: S.say('Fila vazia. Manda !pedido o que queres ver.', {
+            icon: S.ICONS.list
+          })
+        };
+      }
+      const shown = s.requests
+        .slice(0, 5)
+        .map((r, i) => `${i + 1}.${r.user}:${r.text.slice(0, 30)}`)
+        .join(' · ');
+      const more =
+        s.requests.length > 5 ? ` · +${s.requests.length - 5}` : '';
+      return {
+        text: S.clip(S.say(`Pedidos (${s.requests.length}): ${shown}${more}`, {
+          icon: S.ICONS.list
+        }))
+      };
+    }
+
+    case 'proximopedido':
+    case 'próximopedido':
+    case 'nextpedido': {
+      if (!ctx.mod) return { text: null, isModOnly: true };
+      return handleBuiltin('pedido', { ...ctx, args: ['next'] });
+    }
+
+    // ── Twitch Poll / Prediction API ───────────────────────
+    case 'poll':
+    case 'enquete': {
+      if (!ctx.mod) return { text: null, isModOnly: true };
+      if (sub === 'end' || sub === 'fim' || sub === 'close') {
+        if (!twitchApi.isReady()) {
+          return {
+            text: S.say('Precisa TWITCH_CLIENT_ID + scopes channel:manage:polls', {
+              icon: S.ICONS.warn
+            }),
+            isModOnly: true
+          };
+        }
+        const r = await twitchApi.endPoll('TERMINATED');
+        return {
+          text: r.ok
+            ? S.say('Poll encerrada.', { icon: S.ICONS.ok })
+            : S.say(`Poll: ${r.error}`, { icon: S.ICONS.warn }),
+          isModOnly: true
+        };
+      }
+      // !poll Título | A | B | C  [duração]
+      const bits = arg.split('|').map((x) => x.trim()).filter(Boolean);
+      if (bits.length < 3) {
+        return {
+          text: S.say(
+            'Uso: !poll Pergunta | Opção1 | Opção2 [| Op3]  ·  !poll end',
+            { icon: S.ICONS.star }
+          ),
+          isModOnly: true
+        };
+      }
+      if (!twitchApi.isReady()) {
+        return {
+          text: S.say(
+            'Poll API: TWITCH_CLIENT_ID + token com channel:manage:polls (bot/streamer)',
+            { icon: S.ICONS.warn }
+          ),
+          isModOnly: true
+        };
+      }
+      const title = bits[0];
+      const choices = bits.slice(1);
+      // duration se última opção for só número
+      let duration = Number(process.env.POLL_DURATION_SEC || 60);
+      const last = choices[choices.length - 1];
+      if (/^\d+$/.test(last) && choices.length > 2) {
+        duration = parseInt(choices.pop(), 10);
+      }
+      const r = await twitchApi.createPoll(title, choices, duration);
+      if (!r.ok) {
+        return {
+          text: S.say(`Poll falhou: ${r.error}`, { icon: S.ICONS.warn }),
+          isModOnly: true
+        };
+      }
+      return {
+        text: S.say(
+          `Poll aberta (${duration}s): ${title} · ${choices.join(' / ')} — vota no painel da Twitch!`,
+          { icon: S.ICONS.star }
+        ),
+        isModOnly: true
+      };
+    }
+
+    case 'pred':
+    case 'prediction':
+    case 'aposta': {
+      if (!ctx.mod) return { text: null, isModOnly: true };
+      if (sub === 'end' || sub === 'cancel' || sub === 'cancela') {
+        if (!twitchApi.isReady()) {
+          return {
+            text: S.say('Precisa channel:manage:predictions', { icon: S.ICONS.warn }),
+            isModOnly: true
+          };
+        }
+        const r = await twitchApi.endPrediction('CANCELED');
+        return {
+          text: r.ok
+            ? S.say('Prediction cancelada.', { icon: S.ICONS.ok })
+            : S.say(`Pred: ${r.error}`, { icon: S.ICONS.warn }),
+          isModOnly: true
+        };
+      }
+      const bits = arg.split('|').map((x) => x.trim()).filter(Boolean);
+      if (bits.length < 3) {
+        return {
+          text: S.say(
+            'Uso: !pred Título | Outcome1 | Outcome2  ·  !pred end',
+            { icon: S.ICONS.star }
+          ),
+          isModOnly: true
+        };
+      }
+      if (!twitchApi.isReady()) {
+        return {
+          text: S.say(
+            'Pred API: TWITCH_CLIENT_ID + channel:manage:predictions',
+            { icon: S.ICONS.warn }
+          ),
+          isModOnly: true
+        };
+      }
+      const title = bits[0];
+      const outcomes = bits.slice(1);
+      let windowSec = Number(process.env.PRED_DURATION_SEC || 60);
+      const last = outcomes[outcomes.length - 1];
+      if (/^\d+$/.test(last) && outcomes.length > 2) {
+        windowSec = parseInt(outcomes.pop(), 10);
+      }
+      const r = await twitchApi.createPrediction(title, outcomes, windowSec);
+      if (!r.ok) {
+        return {
+          text: S.say(`Prediction falhou: ${r.error}`, { icon: S.ICONS.warn }),
+          isModOnly: true
+        };
+      }
+      return {
+        text: S.say(
+          `Prediction (${windowSec}s): ${title} · ${outcomes.join(' / ')} — usa os pontos do canal!`,
+          { icon: S.ICONS.star }
+        ),
+        isModOnly: true
+      };
     }
 
     default:
@@ -678,19 +1036,26 @@ async function handleBuiltin(cmd, ctx) {
 async function resolveCommand(name, ctx) {
   const cmd = name.toLowerCase();
   const built = await handleBuiltin(cmd, ctx);
-  if (built.text != null || built.isModOnly) return built;
+  if (built.text != null || built.isModOnly || built.isVipOnly) return built;
 
-  const map = buildAliasMap(loadCustom());
-  const response = map.get(cmd);
-  if (response) {
+  const map = buildCustomMap(loadCustom());
+  const entry = map.get(cmd);
+  if (entry) {
+    if (entry.mod && !ctx.mod) return { text: null, isModOnly: true };
+    if (entry.vip && !ctx.mod && !ctx.vip) {
+      return {
+        text: S.say('Esse comando é pra sub/VIP.', { icon: S.ICONS.warn }),
+        isVipOnly: true
+      };
+    }
     const s = state.get();
-    const text = response
+    const text = entry.response
       .replace(/\{user\}/gi, ctx.user)
       .replace(/\{jogo\}/gi, s.currentGame || 'jogo surpresa')
       .replace(/\{game\}/gi, s.currentGame || 'jogo surpresa')
-      .replace(/\{meta\}/gi, s.meta || '—')
+      .replace(/\{meta\}/gi, s.meta || formatMeta(s) || '—')
       .replace(/\{mortes\}/gi, String(s.counters?.morte || 0));
-    return { text: S.clip(S.say(text, { icon: S.ICONS.brand })) };
+    return { text: S.clip(S.say(text, { icon: S.ICONS.brand })), isVipOnly: entry.vip };
   }
 
   return { text: null };
@@ -699,6 +1064,8 @@ async function resolveCommand(name, ctx) {
 module.exports = {
   resolveCommand,
   loadCustom,
+  buildCustomMap,
   commandsFile,
-  gameLine
+  gameLine,
+  parseMetaArg
 };
