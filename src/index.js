@@ -63,6 +63,20 @@ let clipRem = null;
 let webhook = null;
 let dash = null;
 
+// limpeza periódica dos mapas de cooldown (evita crescer sem limite em lives longas)
+const COOLDOWN_SWEEP_MS = 5 * 60 * 1000;
+function sweepCooldowns() {
+  const now = Date.now();
+  const maxAge = Math.max(COOLDOWN, USER_COOLDOWN, DONATION_CD_MS);
+  for (const m of [cooldowns, userCooldowns, donationCd]) {
+    for (const [k, t] of m) {
+      if (now - t >= maxAge) m.delete(k);
+    }
+  }
+}
+const cooldownSweeper = setInterval(sweepCooldowns, COOLDOWN_SWEEP_MS);
+if (typeof cooldownSweeper.unref === 'function') cooldownSweeper.unref();
+
 state.get();
 visitors.startSession();
 
@@ -244,18 +258,25 @@ client.on('message', async (ch, tags, message, self) => {
     if (now - lastCmd < COOLDOWN) return;
     if (USER_COOLDOWN > 0 && now - lastUser < USER_COOLDOWN) return;
   }
+  let result;
+  try {
+    result = await resolveCommand(name, {
+      user,
+      args,
+      startedAt,
+      mod,
+      vip
+    });
+  } catch (err) {
+    ui.err(`comando !${name}: ${err?.stack || err?.message || err}`);
+    return;
+  }
+  if (!result) return;
+  if (!result.text) return;
+  // só guarda cooldown de comandos que responderam (nomes inventados não enchem os mapas)
   cooldowns.set(name, now);
   userCooldowns.set(ukey, now);
 
-  const result = await resolveCommand(name, {
-    user,
-    args,
-    startedAt,
-    mod,
-    vip
-  });
-
-  if (!result.text) return;
   if (result.isModOnly && !mod) return;
   // vip-only already answered with message or null
 
@@ -312,4 +333,11 @@ process.on('SIGINT', () => {
 });
 process.on('SIGTERM', () => {
   shutdown();
+});
+
+process.on('unhandledRejection', (reason) => {
+  ui.err(`unhandledRejection: ${reason?.stack || reason}`);
+});
+process.on('uncaughtException', (err) => {
+  ui.err(`uncaughtException: ${err?.stack || err}`);
 });

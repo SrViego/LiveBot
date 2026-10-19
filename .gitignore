@@ -7,4 +7,3 @@ data/memory.json
 
 # backups de sessão
 data/backups/
-data/state.json

@@ -275,6 +275,7 @@ async function handleBuiltin(cmd, ctx) {
     case 'rmjogo':
     case 'deljogo':
     case 'remjogo': {
+      if (!Array.isArray(s.playlist)) s.playlist = [];
       if (!arg) {
         return {
           text: S.say('Uso: !rmjogo Nome ou número', { icon: S.ICONS.rm }),
@@ -331,6 +332,7 @@ async function handleBuiltin(cmd, ctx) {
     case 'próximo':
     case 'next':
     case 'nextgame': {
+      if (!Array.isArray(s.playlist)) s.playlist = [];
       if (!s.playlist.length) {
         return {
           text: S.say('Lista vazia. !setlista A | B | C', { icon: S.ICONS.warn }),
@@ -369,6 +371,7 @@ async function handleBuiltin(cmd, ctx) {
     case 'anterior':
     case 'prev':
     case 'prevgame': {
+      if (!Array.isArray(s.playlist)) s.playlist = [];
       if (!s.playlist.length) {
         return { text: S.say('Lista vazia.', { icon: S.ICONS.warn }), isModOnly: true };
       }
