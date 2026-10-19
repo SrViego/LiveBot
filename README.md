@@ -85,7 +85,9 @@ Revisitas: “3ª visita no hall”. `VISITOR_GREET=0` desliga revisitas.
 ### LivePix webhook
 ```env
 LIVEPIX_WEBHOOK_PORT=8787
-# POST http://127.0.0.1:8787/  JSON com username + amount
+LIVEPIX_WEBHOOK_SECRET=um_segredo_longo   # obrigatório
+# POST http://127.0.0.1:8787/  header X-Livebot-Secret + JSON com username + amount (em reais)
+# amount_cents também é aceito (centavos). Corpo máx. 64 KB.
 ```
 Opcional: tunnel (cloudflared/ngrok) se a LivePix precisar de URL pública.
 

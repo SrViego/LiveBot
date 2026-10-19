@@ -4,6 +4,7 @@
  */
 
 const http = require('node:http');
+const crypto = require('node:crypto');
 const ui = require('./console-ui');
 const alerts = require('./alerts');
 const { bumpThanks } = require('./events-twitch');
@@ -40,21 +41,32 @@ function parseDonation(body) {
       'name',
       'sender'
     ]) || 'alguém';
-  let amount = pickField(data, [
-    'amount',
-    'value',
-    'valor',
-    'total',
-    'gross'
-  ]);
-  if (amount != null && typeof amount === 'number') {
-    amount = amount >= 100 && Number.isInteger(amount) ? (amount / 100).toFixed(2) : String(amount);
-  } else if (amount != null) {
-    amount = String(amount);
+  // Valores são tratados como REAIS (ex.: 25.5 = R$ 25,50).
+  // Só converte de centavos quando o campo deixa isso explícito (amountCents, amount_cents…).
+  let amount = null;
+  const cents = pickField(data, ['amountCents', 'amount_cents', 'valueCents', 'value_cents', 'cents']);
+  if (cents != null && !Number.isNaN(Number(cents))) {
+    amount = (Number(cents) / 100).toFixed(2);
+  } else {
+    const raw = pickField(data, ['amount', 'value', 'valor', 'total', 'gross']);
+    if (raw != null) amount = String(raw);
   }
   const note =
     pickField(data, ['message', 'msg', 'comment', 'note', 'texto']) || '';
   return { user: String(user).slice(0, 40), amount, note: String(note).slice(0, 120) };
+}
+
+const MAX_BODY_BYTES = 64 * 1024;
+
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a), 'utf8');
+  const bb = Buffer.from(String(b), 'utf8');
+  if (ba.length !== bb.length) {
+    // compara mesmo assim pra não vazar o tamanho pelo tempo
+    crypto.timingSafeEqual(bb, bb);
+    return false;
+  }
+  return crypto.timingSafeEqual(ba, bb);
 }
 
 /**
@@ -67,6 +79,12 @@ function startLivePixWebhook({ say }) {
   }
 
   const secret = (process.env.LIVEPIX_WEBHOOK_SECRET || '').trim();
+  if (!secret) {
+    ui.warn(
+      'Webhook LivePix NÃO iniciado: defina LIVEPIX_WEBHOOK_SECRET no .env (obrigatório quando LIVEPIX_WEBHOOK_PORT está ativo).'
+    );
+    return { stop() {}, port: 0 };
+  }
 
   const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && (req.url === '/' || req.url === '/health')) {
@@ -79,20 +97,34 @@ function startLivePixWebhook({ say }) {
       res.end();
       return;
     }
-    if (secret) {
-      const h =
-        req.headers['x-livebot-secret'] ||
-        req.headers['x-webhook-secret'] ||
-        '';
-      if (h !== secret) {
-        res.writeHead(401);
-        res.end('unauthorized');
-        return;
-      }
+    const h = String(
+      req.headers['x-livebot-secret'] || req.headers['x-webhook-secret'] || ''
+    );
+    if (!safeEqual(h, secret)) {
+      res.writeHead(401);
+      res.end('unauthorized');
+      return;
     }
 
+    const declared = Number(req.headers['content-length'] || 0);
+    if (declared > MAX_BODY_BYTES) {
+      res.writeHead(413);
+      res.end('payload too large');
+      req.resume();
+      return;
+    }
     const chunks = [];
-    for await (const c of req) chunks.push(c);
+    let size = 0;
+    for await (const c of req) {
+      size += c.length;
+      if (size > MAX_BODY_BYTES) {
+        res.writeHead(413);
+        res.end('payload too large');
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    }
     const raw = Buffer.concat(chunks).toString('utf8');
     const donation = parseDonation(raw);
     if (!donation) {
